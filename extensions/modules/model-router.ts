@@ -113,3 +113,14 @@ export function estimateTaskComplexity(goal: string, contextLength: number = 0):
 
   return Math.max(1, Math.min(10, score));
 }
+
+/** Map effort level (1-5) to tier recommendation */
+export function effortLevelToTier(level: number): { tier: "free" | "strong"; reason: string } {
+  if (level >= 5) {
+    return { tier: "strong", reason: "E5 — wszystkie strong" };
+  }
+  if (level >= 4) {
+    return { tier: "strong", reason: "E4 — strong dla produkcyjnych" };
+  }
+  return { tier: "free", reason: `E${level} — domyślny free` };
+}
