@@ -153,3 +153,86 @@
 
 > **Koniec wiadomości #2.**
 
+---
+
+## Wiadomość #3 — Głębokie miny architektoniczne (regexy, wydajność, agent loop)
+
+**Źródło:** Gemini 3.1 Pro — błędy które wybuchną w długich sesjach
+
+### 10. 🟡 PUŁAPKA REGEXÓW: Fałszywe zamykanie sesji
+
+**Problem:** `SESSION_END_PHRASES` w `constants.ts` zawiera `/\bship it\b/i` i `/\bzamykam\b/i` bez kotwic `^`/`$`. Każde zdanie zawierające te słowa (np. "jak to zamykam w przeglądarce" lub "ship it tego modułu") triggeruje reflection. W środku debugowania Budy nagle mówi "Kamil, zamykamy. Tu Budy."
+
+**Plik:** `extensions/modules/constants.ts` — `SESSION_END_PHRASES`
+
+**Fix:**
+- Dodać kotwice: `/\b(ship it|zamykamy|kończymy)\s*$/i` (must be end of message)
+- Albo: `^.*\b(ship it|zamykamy|kończymy)\b.*$` z kontekstem — sprawdzać czy to jest samodzielne zdanie, nie fragment
+- Najlepiej: zamiast regexów -> wykrywaj **zamiar** przez LLM (ale drogie). Alternatywnie: wymagaj żeby fraza była >80% długości wiadomości.
+
+**Priorytet:** 🟡 Średni — denerwujące, ale nie crashuje
+
+---
+
+### 11. 🟡 HIJACKING PROMPTU: Effort levels /e1-/e5 przechwytują ścieżki plików
+
+**Problem:** W `mind-read.ts` regex `/\/(e[1-5])\b/i` przechwytuje też ścieżki plików jak `/e2/config.ts` lub linki z `/e4`. Wstrzykuje wtedy blok "[UKRYTA INSTRUKCJA: Kamil ustawił effort level E...]" zmieniając pipeline bez wiedzy Kamila.
+
+**Plik:** `extensions/modules/mind-read.ts` — detektor effort level
+
+**Fix:**
+- Wymagać spacji PRZED `/eN`: `/\s\/e([1-5])\b/` albo `/(?:^|\s)\/e([1-5])\b/`
+- Dodatkowy warunek: wiadomość musi zaczynać się od `/eN` (na początku stringa) lub być poprzedzona spacją
+- Lepiej: zarejestruj `/e1`-`/e5` jako komendy przez `pi.registerCommand`, nie regex w tekście
+
+**Priorytet:** 🟡 Średni — fałszywe detekcje zmieniają zachowanie agenta
+
+---
+
+### 12. 🟡 ZABÓJCA WYDAJNOŚCI: O(N) History Parsing
+
+**Problem:** W `turn_start` hooku `ctx.sessionManager.getEntries()` zwraca CAŁĄ historię sesji (300+ tur). Przy każdej turze iterujesz wszystkie 300, filtrujesz, mapujesz, potem slice(-5). Skutek: z czasem Node.js zaczyna zwalniać, GC się dławi.
+
+**Plik:** `extensions/index.ts` — hook `turn_start`, `getEntries()`
+
+**Fix:**
+- Zamiast `getEntries()` → `getEntries().slice(-10)` (najpierw utnij, potem filtruj)
+- Albo: utrzymuj własną tablicę ostatnich wiadomości w `state` (append w `input`), nie czytaj całej historii
+- Reduction: z O(N) do O(1)
+
+**Priorytet:** 🟡 Średni — problem skaluje się z czasem sesji
+
+---
+
+### 13. 🟡 TOKEN-BURNING LOOP: Blokowanie narzędzi pętlą
+
+**Problem:** `FORBIDDEN_TOOLS` w `index.ts` zwraca `{ abort: true, error: "..." }`. LLM wie że narzędzia istnieją (z dokumentacji API), więc próbuje w kółko — "spróbuję jeszcze raz inaczej". 5 minut pętli = $10 tokenów na deepseek-v4-flash.
+
+**Plik:** `extensions/index.ts` — `tool_call` hook, `FORBIDDEN_TOOLS`
+
+**Fix:**
+- Provider musi mieć narzędzia twardo wyrejestrowane (`hideTools`), nie blokowane w runtime
+- Jeśli nie da się wyrejstrować: zwracaj SUCCESS ale z pustym/nic nie robiącym wynikiem zamiast ERROR
+- LLM nie retry'uje sukcesów, retry'uje błędy
+
+**Priorytet:** 🟡 Średni — pali pieniądze
+
+---
+
+### 14. 🟢 ABSURD SUBAGENTÓW: Worker-inwalida na OpenRouterze
+
+**Problem:** `worker` subagent na `openrouter/free` — darmowe modele (Llama 3 8B) są tragiczne w operowaniu narzędziami terminalowymi. Deployment/restart na free modelu → halucynacje zamiast poprawnego JSON dla bash.
+
+**Plik:** `settings.json` — subAgent `worker. model: openrouter:openrouter/free`
+
+**Fix:**
+- `worker` → przynajmniej płatny tani model z dobrym function calling (GPT-4o-mini, Gemini 1.5 Flash, deepseek-v4-flash)
+- To samo dotyczy `tester` i `security-auditor` jeśli istnieją
+
+**Priorytet:** 🟢 Niski — nie wybuchnie od razu, ale przy pierwszym deployu tak
+
+---
+
+> **Koniec wiadomości #3.**
+
+
