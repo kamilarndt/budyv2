@@ -91,6 +91,53 @@ export default function (pi: ExtensionAPI) {
       console.warn("[BudyV2] Failed to load dreaming notes:", err);
     }
 
+    // Init heartbeat: scan backlog z memory
+    const backlog: string[] = [];
+    try {
+      const backlogRes = await callMemoryAPI("/search", "POST", {
+        query: "backlog wisi czeka na zrobienie todo task",
+        limit: 3,
+        min_score: 0.2,
+        cross_agent: false,
+      });
+      if (backlogRes?.results?.length > 0) {
+        for (const r of backlogRes.results) {
+          const content = r.content || "";
+          if (content.length > 20 && content.length < 500) {
+            backlog.push(content);
+          }
+        }
+      }
+
+      // Sprawdź też taski z ostatniej sesji
+      const lastSessionRes = await callMemoryAPI("/search", "POST", {
+        query: "ostatnia sesja pipeline completed",
+        limit: 2,
+        min_score: 0.2,
+        cross_agent: false,
+      });
+      if (lastSessionRes?.results?.length > 0) {
+        for (const r of lastSessionRes.results) {
+          backlog.push(`[ostatnia sesja] ${(r.content || "").slice(0, 200)}`);
+        }
+      }
+    } catch (err) {
+      console.warn("[BudyV2] Init heartbeat scan failed:", err);
+    }
+
+    if (backlog.length > 0) {
+      state.recentDreams.push(...backlog.map(b => `📋 BACKLOG: ${b}`));
+      console.log(`[BudyV2] Init heartbeat: ${backlog.length} backlog items loaded`);
+      // Dodaj widżet z backlogiem
+      try {
+        ctx.ui.setWidget("budy-backlog", [
+          "📋 Backlog",
+          "───",
+          ...backlog.slice(0, 3).map(b => `⏳ ${b.slice(0, 60)}`),
+        ]);
+      } catch (_) {}
+    }
+
     pulseHeartbeat("session_start", {
       turns: state.turnCounter,
       soul_loaded: !!state.soulContent,
@@ -137,7 +184,7 @@ export default function (pi: ExtensionAPI) {
 
     // Update factory dashboard on every turn
     try {
-      const agents = ["architect", "scout", "researcher", "coder", "tester", "code-reviewer", "worker", "memory-writer", "evaluator"];
+      const agents = ["architect", "scout", "researcher", "coder", "spec-reviewer", "tester", "code-quality-reviewer", "security-auditor", "worker", "memory-writer"];
       const evalStats: string[] = [];
       for (const agent of agents) {
         const stats = state.autoEval.getAgentStats(agent);
@@ -201,9 +248,9 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (state.recentDreams.length > 0) {
-      block += `\n📓 DREAMING NOTES Z POPRZEDNIEJ SESJI:\n`;
+      block += `\n📓 DREAMING NOTES Z POPRZEDNIEJ SESJI (BACKLOG):\n`;
       block += state.recentDreams.map((d, i) => `[${i + 1}] ${d}`).join("\n");
-      block += `\n——— Przeanalizuj je i wyciągnij wnioski, ale nie pozwól im zdominować rozmowy.\n`;
+      block += `\n——— Jeśli są oznaczone 📋 BACKLOG — zaproponuj Kamilowi które chce ogarnąć. Resztę przeanalizuj jako kontekst.\n`;
     }
 
     // Subagent deployment contract
@@ -213,7 +260,7 @@ export default function (pi: ExtensionAPI) {
     block += `- Każde zadanie researchu → subagent('researcher', { task: '...' })\n`;
     block += `- Każde zadanie przeczytania kodu → subagent('scout', { task: '...' })\n`;
     block += `- Przed kodowaniem → subagent('architect', { task: '...' }) → ISA → subagent('coder')\n`;
-    block += `- Po kodzie → subagent('tester', { task: '...' }) → subagent('code-reviewer', { task: '...' })\n`;
+    block += `- Po kodzie → subagent('spec-reviewer', { task: '...' }) → subagent('tester', { task: '...' }) → subagent('code-quality-reviewer', { task: '...' })\\n`;
     block += `- Automatyzacja/deploy → subagent('worker', { task: '...' })\n`;
     block += `- Zapis do pamięci → subagent('memory-writer', { task: '...' })\n`;
     block += `- Nie czekaj na wynik — subagent działa w tle, czytaj wyniki z plików\n`;
@@ -222,13 +269,11 @@ export default function (pi: ExtensionAPI) {
 
     // Auto-Eval instructions
     block += `\n📊 AUTO-EVAL SYSTEM — FEEDBACK LOOP:\n`;
-    block += `- Po przeczytaniu outputu subagenta → zleć ewaluację: subagent('evaluator', { task: 'oceń output subagenta [nazwa]', context: { goal: '...', output: '[treść outputu]' } })\n`;
-    block += `- Evaluator zwróci score 1-10 + sugestie poprawy instrukcji\n`;
-    block += `- Jeśli score ≤ 6 → system automatycznie zmodyfikuje instrukcje agents/*.md\n`;
-    block += `- Jeśli score spada po modyfikacji → system zrobi rollback\n`;
-    block += `- Sprawdzaj ewaluacje w dashboardzie: 📊 Eval: coder:7.2📈 | scout:8.0➡️\n`;
-    block += `- NIE oceniaj wszystkiego — tylko taski produkcyjne, architektoniczne, ryzykowne\n`;
-    block += `- Pomijaj eval dla prostych tasków (read, search, simple queries)\n`;
+    block += `- Security audit → subagent('security-auditor', { task: '...' })\n`;
+    block += `- Continuous execution: nie pytaj Kamila między krokami. Działaj. Przerywaj tylko gdy BLOCKED.\n`;
+    block += `- Pipeline: architect → coder → spec-reviewer → tester → code-quality-reviewer → memory-writer\n`;
+    block += `- Dla E4/E5: dodaj security-auditor przed memory-writer\n`;
+    block += `- Szczegóły w AGENTS.md\n`;
     block += `\n═══════════════════════════════════════════════════════\n`;
 
     return { systemPrompt: event.systemPrompt + block };
