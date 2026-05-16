@@ -358,6 +358,90 @@
 
 > **Koniec wiadomości #5.**
 
+---
+
+## Wiadomość #6 — Wielowątkowość, sieć, zarządzanie stanem
+
+**Źródło:** Gemini 3.1 Pro — "system zakładający happy path, rozpadnie się przy obciążeniu"
+
+### 22. 🟡 KORUPCJA DANYCH: Race Condition w Auto-Eval (jeśli istnieje)
+
+**Problem:** `auto-eval.ts` (jeśli istnieje) zapisuje `eval-history.json` przez `writeFileSync` — 4 równoległych subagentów = race condition. Jeden nadpisuje drugiego, JSON się korumpuje.
+
+**Plik:** `extensions/modules/auto-eval.ts`
+
+**Stan faktyczny (po weryfikacji):** ⚠️ Nie istnieje. Do potwierdzenia z Kamilem.
+
+**Fix:**
+- Jeśli nie istnieje — pomijamy
+- Jeśli istnieje: używać append-only log + lock file lub atomic writes
+
+**Priorytet:** 🟡 Średni — jeśli moduł nie istnieje
+
+---
+
+### 23. 🔴 MARTWY MECHANIZM: Retry w task-queue nie działa
+
+**Problem:** `task-queue.ts` ma `fail()` który ustawia `retryCount++` i `status = "pending"`, ale w `index.ts` NIE MA pollera ani hooka który by ponownie uruchomił pending taski. Task wraca do "pending" i zostaje tam na zawsze.
+
+**Plik:** `extensions/modules/task-queue.ts` — `fail()` + `extensions/index.ts` — brak retry logic
+
+**Fix:**
+- Dodać `processRetries()` w `turn_start` — sprawdza taski z `retryCount > 0` i `status === "pending"` i informuje Budy
+- Albo: retry na poziomie tool_call — jeśli subagent fail, automatycznie spawn nowy
+- Najprościej: zamiast `status = "pending"` → `status = "failed"` i koniec. Retry to feature który wymaga orchestratora.
+
+**Priorytet:** 🔴 **Krytyczny** — retry to atrapa, taski wiszą w próżni
+
+---
+
+### 24. 🟡 RULETKA IP: Hardkodowany adres Hermes w WSL2
+
+**Problem:** `constants.ts` zawiera `HERMES_DELEGATE_URL = "http://172.17.96.1:4545/api/tasks/delegate"`. W WSL2 adres IP hosta zmienia się po restarcie Windows. Jutro może być `172.18.50.1` — Hermes bridge padnie z `ECONNREFUSED`.
+
+**Plik:** `extensions/modules/constants.ts` — `HERMES_DELEGATE_URL`
+
+**Fix:**
+- Użyć `localhost` lub `host.docker.internal` zamiast hardkodowanego IP
+- Albo: resolvować przez skrypt bash (`ip route show | grep default | awk '{print $3}'`)
+- Albo: zmienna środowiskowa `HERMES_URL`
+
+**Priorytet:** 🟡 Średni — padnie po restarcie Windows
+
+---
+
+### 25. 🟡 PUSTY STRING ŚMIERCI: Sentinel niszczy TUI
+
+**Problem:** `index.ts` hook `message_end` zwraca `{ message: { ...msg, content: "" } }` gdy sentinel uzna odpowiedź za szum. Większość TUI nie radzi sobie z pustym contentem — migotanie, puste dymki, błędy parsera Markdown.
+
+**Plik:** `extensions/index.ts` — `message_end` sentinel return
+
+**Fix:**
+- Zamiast `content: ""` → spróbować `{ abort: true }` (jeśli API wspiera)
+- Albo: `content: " "` (spacja zamiast pustego stringa — TUI to ogarnia)
+- Albo: w ogóle nie zwracać zmienionego message — tylko `return {}` i log
+
+**Priorytet:** 🟡 Średni — kosmetyka UI, ale irytujące
+
+---
+
+### 26. 🟡 WYCIEK PAMIĘCI: cleanOld() nigdy nie wywołane
+
+**Problem:** `task-queue.ts` ma `cleanOld()`, ale w `index.ts` NIGDY nie jest wywołana. Mapa `tasks` rośnie z każdą turą, każdy task trzyma `context` (500 znaków JSON). Po setkach tasków — wyciek RAM.
+
+**Plik:** `extensions/modules/task-queue.ts` + `extensions/index.ts`
+
+**Fix:**
+- Dodać `state.taskQueue.cleanOld(30 * 60 * 1000)` w `turn_start` (raz na turę czyść taski starsze niż 30 min)
+- Ustawić `context` na `""` po zakończeniu taska (oszczędność pamięci)
+
+**Priorytet:** 🟡 Średni — problem narasta z czasem
+
+---
+
+> **Koniec wiadomości #6.** To już wszystkie uwagi Gemini.
+
+
 
 
 
