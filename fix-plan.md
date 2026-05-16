@@ -439,7 +439,87 @@
 
 ---
 
-> **Koniec wiadomości #6.** To już wszystkie uwagi Gemini.
+> **Koniec wiadomości #6.**
+
+---
+
+## Wiadomość #7 — "Potemkinowska Wioska" (ostatnia, podsumowująca)
+
+**Źródło:** Gemini 3.1 Pro — "system udaje że działa, w środku tekturowe makiety"
+
+### 27. 🔴 ILUZJA ROUTERA: `routeModel()` liczy ale nie zmienia inputu
+
+**Problem:** `model-router.ts` oblicza routing (free/strong), `index.ts` loguje wynik i wysyła do Hermesa, ale NIGDY nie modyfikuje `event.input.model`. Pakiet `pi-subagents` odpala agenta z modelem sztywno zapisanym w `settings.json`. Router to "obserwator" — liczy, loguje, ale nie ma wpływu na rzeczywiste wywołanie.
+
+**Plik:** `extensions/index.ts` — `tool_call` hook, `routeModel()` result nie wpływa na input
+
+**Fix:**
+- Po `routeModel()` → `event.input.model = routing.model; return { input: event.input };`
+- Albo: `event.input = { ...event.input, model: routing.model }`
+- Bez tego model routing to atrapa
+
+**Priorytet:** 🔴 **Krytyczny** — router nie robi nic
+
+---
+
+### 28. 🟡 AUTO-EVAL MARTWY KOD: Modyfikuje .md ale settings.json ma hardkodowane systemPrompt
+
+**Problem:** `auto-eval.ts` (jeśli istnieje) modyfikuje `agents/coder.md`, ale `settings.json` ma sztywno wpisane `systemPrompt` dla każdego subagenta. Pi Agent ładuje konfig z JSON-a, nie z .md. Auto-eval modyfikuje martwe pliki.
+
+**Plik:** `extensions/modules/auto-eval.ts` (jeśli istnieje) vs `settings.json` — subAgents[].systemPrompt
+
+**Stan faktyczny (po weryfikacji):** ⚠️ `auto-eval.ts` nie istnieje w obecnym kodzie. Do potwierdzenia z Kamilem.
+
+**Priorytet:** 🟡 Średni — jeśli moduł nie istnieje, pomijamy
+
+---
+
+### 29. 🔴 CIENIOWA KOLEJKA: taskQueue to "stan równoległy" nieaktualizowany
+
+**Problem:** `index.ts` enqueue do `state.taskQueue` przy każdym `subagent()` tool callu. Ale `pi-subagents` ma swój własny cykl życia — nie ma hooka który informuje TypeScript gdy subagent skończył. Taski wiszą w `pending` na zawsze. Dashboard pokazuje 15 zadań "w kolejce" ale wszystkie są martwe.
+
+**Plik:** `extensions/index.ts` — `tool_call` hook
+
+**Fix:**
+- Potrzebny hook `tool_result` lub `tool_response` w Pi Agent API
+- Albo: subagent musi zwrócić wynik w tej samej turze (`background: false`)
+- Najgorsze: task queue to dekoracja, nie system
+
+**Priorytet:** 🔴 **Krytyczny** — to samo co #17, ale inaczej ujęte
+
+---
+
+### 30. 🔴 UNHANDLED PROMISE REJECTION: `saveUserFact` bez catch
+
+**Problem:** `saveUserFact(fact, tp.tag, 3)` w hooku `input` jest asynchroniczne (`Promise<void>`) ale wywołane bez `await` i bez `.catch()`. Jeśli Memory API padnie, `fetch` rzuci `ECONNREFUSED` → UnhandledPromiseRejection → Node.js zabija proces Pi.
+
+**Plik:** `extensions/index.ts` — hook `input`, wywołanie `saveUserFact`
+
+**Fix:**
+- Dodać `.catch(err => console.warn('[BudyV2] saveUserFact failed:', err))` do każdego wywołania
+- Albo: `void saveUserFact(...)` + globalny handler unhandledRejection
+
+**Priorytet:** 🔴 **Krytyczny** — może zabić całą sesję
+
+---
+
+### 31. 🟡 MARTWY BACKLOG: Memory search z embeddingami nie działa
+
+**Problem:** W `session_start` wysyłasz `query: "backlog wisi czeka na zrobienie todo task"` do bazy wektorowej. Embeddingi znajdą artykuły SEMANTYCZNIE podobne (np. "jak radzić sobie z backlogiem"), a nie fakty które są strukturalnie "status: pending". Backlog wymaga tagów/metadanych, nie wektorów.
+
+**Plik:** `extensions/index.ts` — `session_start`, init heartbeat memory search
+
+**Fix:**
+- Zamiast wektorów: użyć tagów/metadanych w memory-api (jeśli wspiera filtrowanie po tagach)
+- Albo: zrobić memory_search z konkretnymi tagami zamiast luźnego stringa
+- Albo: przechowywać backlog w osobnym pliku, nie w wektorach
+
+**Priorytet:** 🟡 Średni — init heartbeat działa ale znajduje nie to co trzeba
+
+---
+
+> **Koniec wiadomości #7.** Koniec analizy Gemini.
+
 
 
 
