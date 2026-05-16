@@ -272,5 +272,92 @@
 
 > **Koniec wiadomości #4.**
 
+---
+
+## Wiadomość #5 — Głęboka analiza modułów (task-queue, auto-eval, pipeline)
+
+**Źródło:** Gemini 3.1 Pro — "kierownica nie połączona z kołami, bak dziurawiony"
+
+### 17. 🔴 WIDMOWA KOLEJKA: `dequeue()` / `complete()` / `fail()` nigdy nie wywołane
+
+**Problem:** `task-queue.ts` ma pełną logikę kolejkowania (enqueue, dequeue, complete, fail, cleanOld, detectCompletedPipeline), ale w całym `index.ts` wywoływane jest TYLKO `enqueue()` w hooku `tool_call`. NIGDY nie ma wywołania `dequeue()`, `complete()`, `fail()` ani `cleanOld()`. Taski wiszą w `pending` na zawsze. `detectCompletedPipeline()` nigdy nie znajdzie completed tasków. Dashboard pokazuje wieczne klepsydry.
+
+**Plik:** `extensions/index.ts` + `extensions/modules/task-queue.ts`
+
+**Fix:**
+- W hooku `tool_call` po subagencie: po otrzymaniu wyniku → `taskQueue.complete(taskId, result)`
+- Potrzebny hook `tool_result` (Pi Agent API) który odpala się po zakończeniu narzędzia
+- Lub: `tool_call` z `background: false` — wtedy wynik przychodzi synchronicznie w tej samej turze
+- Dodać `taskQueue.cleanOld()` w `turn_start` (raz na turę)
+
+**Priorytet:** 🔴 **Krytyczny** — task queue to atrapa, nic nie działa
+
+---
+
+### 18. 🟡 SYNCHRONICZNE ZAPISY: auto-eval blokuje Event Loop
+
+**Problem:** `auto-eval.ts` (jeśli istnieje) używa `readFileSync`, `writeFileSync`, `existsSync`, `mkdirSync` — wszystko synchroniczne. Node.js jest jednowątkowy — synchroniczne I/O blokuje Event Loop, zamrażając całe UI, dashboard, subagentów na czas zapisu.
+
+**Plik:** `extensions/modules/auto-eval.ts` (jeśli istnieje)
+
+**Stan faktyczny (po weryfikacji):** ⚠️ `auto-eval.ts` nie istnieje w obecnym kodzie (usunięty w refaktoryzacji). Do potwierdzenia.
+
+**Fix:**
+- Używać `fs/promises` (`readFile`, `writeFile`) zamiast `fs` (`readFileSync`, `writeFileSync`)
+- Jeśli moduł nie istnieje — pomijamy
+
+**Priorytet:** 🟡 Średni — jeśli nie ma modułu, nie ma problemu
+
+---
+
+### 19. 🔴 AUTO-EVAL SELF-MODIFYING: Doklejanie komentarzy HTML do agentów
+
+**Problem:** `auto-eval.ts` (jeśli istnieje) dokleja historię zmian jako komentarze HTML do plików agentów (np. `coder.md`). Po 30 poprawkach plik puchnie, 80% promptu to cmentarzysko starych rad. Model ma attention drift, zżera tokeny.
+
+**Plik:** `extensions/modules/auto-eval.ts`
+
+**Stan faktyczny (po weryfikacji):** ⚠️ Nie istnieje. Do potwierdzenia.
+
+**Fix:**
+- Jeśli moduł nie istnieje — pomijamy
+- Jeśli istnieje: logować do osobnego pliku, nie modyfikować agentów
+
+**Priorytet:** 🔴 Krytyczny — jeśli moduł istnieje, niszczy agentów
+
+---
+
+### 20. 🟡 NAIWNA DETEKCJA PIPELINE: Time-window zamiast parentTaskId
+
+**Problem:** `detectCompletedPipeline()` szuka tasków z ostatnich 60s (stała `PIPELINE_WINDOW = 10_000ms`, zbiera z 60_000ms). Rzeczywisty pipeline (architect → coder → tester → reviewer) trwa 3-5 minut. Funkcja nigdy nie znajdzie powiązanych tasków.
+
+**Plik:** `extensions/modules/task-queue.ts` — `detectCompletedPipeline()`
+
+**Fix:**
+- Zamiast time-window: używać `parentTaskId` lub grupowania po `goal` (wszystkie taski z tym samym tematem)
+- Albo: pipeline ID — gdy Budy zaczyna pipeline, zapisuje timestamp rozpoczęcia, potem zbiera wszystkie taski z timestampem > ten
+- Usunąć sztywne `60_000ms` — pipeline może trwać 10 minut
+
+**Priorytet:** 🟡 Średni — pipeline detection nie działa
+
+---
+
+### 21. 🔴 EFFORT LEVELS ATAK: mind-read nie komunikuje się z routerem
+
+**Problem:** `mind-read.ts` wykrywa `/e4` i wstrzykuje "[UKRYTA INSTRUKCJA: ustaw effort level E4...]" do tekstu. Ale `model-router.ts` w `tool_call` hooku używa `explicitRequest: "auto"` — twardo. LLM dostaje instrukcję "użyj strong model", ale TypeScript router to ignoruje i przydziela free. System jest ślepy na komendy Kamila.
+
+**Plik:** `extensions/index.ts` — `tool_call` hook, `routeModel()` invocation
+
+**Fix:**
+- `mindRead` musi zapisać effort level do `state.currentEffortLevel`
+- `tool_call` hook → `routeModel({ ..., explicitRequest: state.currentEffortLevel >= 4 ? "strong" : "auto" })`
+- Albo przekazać effort level przez `input` do subagenta
+
+**Priorytet:** 🔴 **Krytyczny** — effort levels nie robią nic
+
+---
+
+> **Koniec wiadomości #5.**
+
+
 
 
