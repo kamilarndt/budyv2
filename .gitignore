@@ -43,3 +43,12 @@ PAI/
 tmp/
 temp/
 *.bak
+
+# Symlinks (env-specific)
+auth.json
+models.json
+bin/fd
+
+# Old monolithic extensions (now modular)
+extensions/budy-personality-v2.ts
+extensions/memory.ts

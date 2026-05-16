@@ -137,7 +137,7 @@ export default function (pi: ExtensionAPI) {
 
     // Update factory dashboard on every turn
     try {
-      const agents = ["architect", "scout", "researcher", "coder", "tester", "code-reviewer", "worker", "memory-writer"];
+      const agents = ["architect", "scout", "researcher", "coder", "tester", "code-reviewer", "worker", "memory-writer", "evaluator"];
       const evalStats: string[] = [];
       for (const agent of agents) {
         const stats = state.autoEval.getAgentStats(agent);
