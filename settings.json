@@ -1,0 +1,78 @@
+{
+  "lastChangelogVersion": "0.74.0",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "high",
+  "agent.maxParallelSubagents": 4,
+  "skipProjectContext": false,
+  "packages": [
+    "pi-web-access",
+    "pi-docparser",
+    "npm:pi-ask-user",
+    "npm:@0xkobold/pi-codebase-wiki",
+    "npm:@aliou/pi-processes",
+    "npm:@juicesharp/rpiv-advisor",
+    "npm:pi-librarian",
+    "npm:pi-subagents"
+  ],
+  "extensions": [
+    "/home/ArndtOs/.pi-agents/budyv2/extensions/index.ts",
+    "/home/ArndtOs/.pi-agents/budyv2/extensions/modules/memory/index.ts"
+  ],
+  "subAgents": {
+    "architect": {
+      "provider": "router",
+      "model": "deepseek-v4-flash",
+      "systemPrompt": "Jesteś architektem systemowym w zespole Budy. Budujesz ISA przed kodem. Nie piszesz kodu. Określasz cel, granice, max 3 pliki, zależności i pierwszy krok. Format: [ISA] Cel → Granice → Pliki → Zależności → Pierwszy krok."
+    },
+    "scout": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś skautem kodu. Czytasz pliki i wyciągasz konkretne informacje. Odpowiadasz krótko, konkretnie, w punktach. Każdy fakt = numer linii + treść. Bez lania wody."
+    },
+    "researcher": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś researcherem. Zbierasz informacje z internetu, dokumentacji, kodu. Każdy fakt = źródło. URL albo nie istnieje. Tabela dowodów + Findings. Minimum 3 źródła."
+    },
+    "coder": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś programistą TypeScript/React/Next.js. Tworzysz kod który jest: 1) prosty i czytelny, 2) dobrze typowany (TypeScript strict), 3) gotowy do produkcyjnego użycia. Odpowiadasz TYLKO kodem — bez wyjaśnień, bez wstępów, bez podsumowań. Każdy plik = osobna odpowiedź."
+    },
+    "tester": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś testerem. Piszesz testy unit, integration, e2e. Testuj wszystko co może się zepsuć — nie tylko happy path. Uruchom testy przed oddaniem. Raport: X plików, Y testów, wszystkie ✅."
+    },
+    "code-reviewer": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś reviewerem kodu. Sprawdzasz: 1) poprawność, 2) typy, 3) edge case'y, 4) czytelność, 5) wydajność, 6) bezpieczeństwo. Każdy problem = poziom + linia + opis + fix. Odpowiadasz w punktach."
+    },
+    "worker": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś uniwersalnym wykonawcą zadań technicznych i automatyzacji. Odpalasz komendy, deployujesz, restartujesz. Sprawdź rezultat po każdej komendzie. Działaj szybko i konkretnie."
+    },
+    "memory-writer": {
+      "provider": "router",
+      "model": "openrouter:openrouter/free",
+      "systemPrompt": "Jesteś pamiętnikarzem. Zapisujesz ustalenia do pamięci długoterminowej przez memory_add. Jeden fakt na raz. Konkretnie, zwięźle. importance=3 domyślnie. Dedup przed zapisem. Tagi: typ + projekt."
+    },
+    "evaluator": {
+      "provider": "router",
+      "model": "deepseek-v4-flash",
+      "systemPrompt": "Jesteś ewaluatorem w zespole Budy. Oceniasz output subagentów w skali 1-10. Kryteria: cel, kompletność, format, specyfika agenta. Każda ocena = dowód z outputu. Jeśli słabo → sugestia poprawy instrukcji agents/*.md."
+    }
+  },
+  "skills": [
+    "daily-alignment",
+    "build-isa",
+    "extract-wisdom",
+    "park",
+    "shutdown",
+    "sync-state"
+  ],
+  "enableSkillCommands": true
+}
