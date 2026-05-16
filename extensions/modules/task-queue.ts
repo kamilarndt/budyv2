@@ -147,4 +147,36 @@ export class TaskQueue {
     });
     return removed;
   }
+
+  /** Detekcja zakończonego pipeline'a — sprawdza czy code-reviewer (ostatni) dopiero skończył */
+  detectCompletedPipeline(): {
+    isComplete: boolean;
+    tasks: { agent: string; goal: string; result: string | null }[];
+  } | null {
+    const now = Date.now();
+    const PIPELINE_WINDOW = 10_000; // 10s — pipeline musi być zakończony w tym oknie
+
+    const all = Array.from(this.tasks.values());
+    const completed = all.filter(
+      t => t.status === "completed" && t.completedAt && (now - t.completedAt) < PIPELINE_WINDOW
+    );
+
+    // Sprawdź czy code-reviewer (ostatni w pipeline) właśnie skończył
+    const hasRecentReviewer = completed.some(t => t.agent === "code-reviewer" || t.agent === "tester");
+    if (!hasRecentReviewer) return null;
+
+    // Zbierz wszystkie taski z ostatnich 60s dla kontekstu
+    const recent = all.filter(
+      t => t.completedAt && (now - t.completedAt) < 60_000
+    );
+
+    const pipelineTasks = recent
+      .filter(t => t.status === "completed")
+      .map(t => ({ agent: t.agent, goal: t.goal, result: t.result }));
+
+    return {
+      isComplete: true,
+      tasks: pipelineTasks,
+    };
+  }
 }

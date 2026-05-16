@@ -401,10 +401,30 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ════════════════════════════════════════════════════════════════════════════
-  // turn_end — dialog reflection
+  // turn_end — LEARN phase + dialog reflection
   // ════════════════════════════════════════════════════════════════════════════
 
   pi.on("turn_end", async (_event, ctx) => {
+    // LEARN: detect completed pipeline → auto memory-writer
+    const pipeline = state.taskQueue.detectCompletedPipeline();
+    if (pipeline && pipeline.tasks.length >= 2) {
+      const summaryLines = pipeline.tasks.map(
+        t => `- [${t.agent}]: ${t.goal.slice(0, 80)}${t.result ? ` → ${t.result.slice(0, 80)}` : ""}`
+      );
+      const summary = `Pipeline completed:\n${summaryLines.join("\n")}`;
+      console.log(`[LEARN] Pipeline detected: ${pipeline.tasks.length} tasks`);
+      console.log(`[LEARN] Summary:\n${summary}`);
+
+      // Zapisz do memory API
+      try {
+        await saveDreamNote(summary, 3);
+        console.log("[LEARN] Pipeline summary saved to memory");
+      } catch (err) {
+        console.warn("[LEARN] Failed to save pipeline summary:", err);
+      }
+    }
+
+    // Dialog reflection (existing)
     if (!state.pendingReflection || state.turnCounter < 5) return;
 
     state.pendingReflection = false;
