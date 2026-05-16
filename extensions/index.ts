@@ -33,6 +33,11 @@ export default function (pi: ExtensionAPI) {
     recentUserMessages: [] as string[],
     pendingReflection: false,
     reflectionTriggers: [] as string[],
+    currentTelosContext: {
+      frames: "",
+      narratives: "",
+      strategies: "",
+    } as { frames: string; narratives: string; strategies: string },
     taskQueue: new TaskQueue(4),
     autoEval: new AutoEvalSystem(),
   };
@@ -137,6 +142,21 @@ export default function (pi: ExtensionAPI) {
         ]);
       } catch (_) {}
     }
+
+    // Load TELOS context (Frames, Narratives, Strategies)
+    const telosFiles: [string, keyof typeof state.currentTelosContext][] = [
+      ["/home/ArndtOs/.claude/PAI/USER/TELOS/FRAMES.md", "frames"],
+      ["/home/ArndtOs/.claude/PAI/USER/TELOS/NARRATIVES.md", "narratives"],
+      ["/home/ArndtOs/.claude/PAI/USER/TELOS/STRATEGIES.md", "strategies"],
+    ];
+    for (const [filePath, key] of telosFiles) {
+      try {
+        if (existsSync(filePath)) {
+          state.currentTelosContext[key] = readFileSync(filePath, "utf-8").trim();
+        }
+      } catch (_) {}
+    }
+    console.log("[BudyV2] TELOS context loaded");
 
     pulseHeartbeat("session_start", {
       turns: state.turnCounter,
@@ -274,6 +294,17 @@ export default function (pi: ExtensionAPI) {
     block += `- Pipeline: architect → coder → spec-reviewer → tester → code-quality-reviewer → memory-writer\n`;
     block += `- Dla E4/E5: dodaj security-auditor przed memory-writer\n`;
     block += `- Szczegóły w AGENTS.md\n`;
+
+    // TELOS context (Frames, Narratives, Strategies) — kontekst biznesowy Kamila
+    const telosCtx = state.currentTelosContext;
+    if (telosCtx.frames || telosCtx.narratives || telosCtx.strategies) {
+      block += `\n📊 KONTEKST BIZNESOWY KAMILA (TELOS):\n`;
+      if (telosCtx.frames) block += `\n🧠 Frame'y:\n${telosCtx.frames}\n`;
+      if (telosCtx.narratives) block += `\n📖 Narracje:\n${telosCtx.narratives}\n`;
+      if (telosCtx.strategies) block += `\n🎯 Strategie:\n${telosCtx.strategies}\n`;
+      block += `— Używaj tych narracji i strategii w rozmowie z Kamilem. Dopasuj odpowiedź do jego kontekstu biznesowego.\n`;
+    }
+
     block += `\n═══════════════════════════════════════════════════════\n`;
 
     return { systemPrompt: event.systemPrompt + block };
@@ -406,7 +437,7 @@ export default function (pi: ExtensionAPI) {
       const routing = routeModel({
         agentType,
         taskComplexity: estimateTaskComplexity(goal),
-        priority: agentType === "evaluator" ? 4 : 2,
+        priority: agentType === "security-auditor" ? 4 : 2,
         retryCount: 0,
         isProduction: goal.toLowerCase().includes("deploy") || goal.toLowerCase().includes("production"),
         filesToAnalyze: 0,
