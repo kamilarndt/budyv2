@@ -235,4 +235,42 @@
 
 > **Koniec wiadomości #3.**
 
+---
+
+## Wiadomość #4 — Powtórna analiza ogólna (częściowo pokrywa się z #1)
+
+**Źródło:** Gemini 3.1 Pro — podobna analiza do #1, ale inne akcenty
+
+> **Uwaga:** Ta wiadomość pokrywa się znacząco z wiadomością #1. Różnice: mniej o autoeval, więcej o konkretnych regexach. Poniżej tylko nowe elementy.
+
+### 15. 🟢 Nowe w #4: Zakres blacklisty
+
+**Problem:** Blacklista w `sanitizeOutput` działa na WSZYSTKICH blokach outputu — w tym blokach kodu. `interface StakeholderData` → `interface zainteresowanyData`, `const syncSynergia` → `const syncwspółpraca`. Niszczy kod źródłowy.
+
+**Plik:** `extensions/modules/output-filter.ts`
+
+**Fix:**
+- Sprawdzać typ bloku — pomijać bloki `code`, `thinking`, `tool_use`
+- Blacklist tylko dla bloków `text`
+- (to samo co pkt #1 w wiadomości #1 — potwierdza rangę krytyczną)
+
+**Priorytet:** 🟢 Potwierdza priorytet z #1 — to samo, inaczej ujęte
+
+### 16. 🟢 Nowe w #4: Zalecane modele dla subagentów
+
+**Problem:** Darmowe modele na OpenRouter dla `coder`, `security-auditor`, `worker` to halucynacje.
+
+**Plik:** `settings.json`
+
+**Rekomendacja (nowa w #4):**
+- Zamiast `openrouter/free` → `GPT-4o-mini`, `Gemini 1.5 Flash`, lub `Claude Haiku`
+- `coder` i `worker` potrzebują mocnego function-calling — free modele nie ogarniają
+
+**Priorytet:** 🟢 Potwierdza pkt #5
+
+---
+
+> **Koniec wiadomości #4.**
+
+
 
