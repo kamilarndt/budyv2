@@ -87,3 +87,69 @@
 ---
 
 > **Koniec wiadomości #1.**
+
+---
+
+## Wiadomość #2 — Błędy krytyczne (crash, race, konflikt)
+
+**Źródło:** Gemini 3.1 Pro — błędy które "położą system w pierwszych 5 minutach"
+
+### 6. 🔴 BŁĄD KRYTYCZNY: Niezdefiniowany `state.autoEval`
+
+**Problem:** W `index.ts` hook `turn_start` wywołuje `state.autoEval.getAgentStats(agent)`, ale `autoEval` NIGDY nie jest zainicjowany w obiekcie `state`. Skutek: `TypeError: Cannot read properties of undefined` przy każdej turze. Błąd złapany w catch, ale blokuje widget taskQueue i dashboard.
+
+**Plik:** `extensions/index.ts` — obiekt `state` + hook `turn_start`
+
+**Stan faktyczny (po weryfikacji):** ✅ W obecnym kodzie `autoEval` nie występuje. Został usunięty w którejś z poprawek. Zweryfikowano: 0 wystąpień w extensions/. Gemini analizował starszą wersję lub popełnił błąd. Do potwierdzenia z Kamilem.
+
+**Priorytet:** ⚠️ Do weryfikacji — jeśli nie ma, pomijamy.
+
+---
+
+### 7. 🟡 SCHIZOFRENIA PROMPTU: memory_add vs memory-writer
+
+**Problem:** SYSTEM.md nakazuje używać natywnego `memory_add`. Directives (wstrzykiwane przez `before_agent_start`) nakazują delegować do `subagent('memory-writer')`. Model dostaje dwa sprzeczne rozkazy → halucynuje, miesza, traci tokeny na negocjacje wewnętrzne.
+
+**Plik:** `SYSTEM.md` vs `directives.ts (+ before_agent_start)`
+
+**Fix:**
+- Wybrać JEDNĄ drogę: albo `memory-writer` subagent (odciąża kontekst), albo natywne `memory_add`
+- Rekomendacja: `memory-writer` subagent — to odciąża Budy z pamiętania
+- Usunąć wzmianki o `memory_add` z SYSTEM.md
+- Dodać w directives: "Tylko subagent('memory-writer') — nigdy nie używaj memory_add bezpośrednio"
+
+**Priorytet:** 🟡 Średni — powoduje halucynacje, ale nie crash
+
+---
+
+### 8. 🟡 ILUZJA ASYNCHRONICZNOŚCI: Race Condition z subagentami
+
+**Problem:** W directives: "Nie czekaj na wynik — subagent działa w tle, czytaj wyniki z plików". LLM działa sekwencyjnie — jeśli Budy od razu po `background: true` spróbuje czytać pliki, subagent jeszcze nie zdążył nic napisać. Dostanie pusty plik → "koder nic nie napisał, blokada".
+
+**Plik:** `directives.ts` — instrukcja "czytaj wyniki z plików"
+
+**Fix:**
+- Usunąć "czytaj wyniki z plików" z directives — to nie działa sekwencyjnie
+- Zamiast: "Po subagencie → kontynuuj rozmowę. Subagent sam odda wynik jak skończy."
+- Pi Agent API: subagent `background: true` → callback/event z wynikiem
+
+**Priorytet:** 🟡 Średni — błędna instrukcja, ale nie blokuje całkowicie
+
+---
+
+### 9. 🟢 MARTWY KONTEKST: Stale Cache TELOS-u
+
+**Problem:** TELOS (Frames, Narratives, Strategies) ładowane synchronicznie `readFileSync` w `session_start` i cache'owane w `state.currentTelosContext`. Jeśli Kamil zmieni strategie w trakcie długiej sesji, Budy nie zobaczy zmian do `/reload`.
+
+**Plik:** `extensions/index.ts` — `session_start` ładuje TELOS tylko raz
+
+**Fix:**
+- Odświeżać TELOS w `turn_start` (co turę, nie co sesję) — tanie, bo `readFileSync` na lokalnym FS to <1ms
+- Albo: lazy load — czytaj TELOS w `before_agent_start` na każdą turę, nie cache'uj
+
+**Priorytet:** 🟢 Niski — mało prawdopodobne że Kamil zmienia strategie w trakcie sesji
+
+---
+
+> **Koniec wiadomości #2.**
+
