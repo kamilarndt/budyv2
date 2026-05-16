@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "fs";
 
 import { SOUL_PATH, CRISIS_KEYWORDS, USER_TRIGGER_PATTERNS, SESSION_END_PHRASES } from "./modules/constants";
 import { mindRead } from "./modules/mind-read";
-import { sanitizeOutput, hasBlacklistedWords } from "./modules/output-filter";
+import { sanitizeOutput, hasBlacklistedWords, isNoise } from "./modules/output-filter";
 import { callMemoryAPI, saveUserFact, saveDreamNote } from "./modules/memory-api";
 import { sendToHermes, pulseHeartbeat } from "./modules/bridge-hermes";
 import { buildOperationalDirectives } from "./modules/directives";
@@ -319,6 +319,14 @@ export default function (pi: ExtensionAPI) {
         console.warn("[BudyV2] Output validation: blacklist detected and sanitized");
         return { message: { ...msg, content: sanitized } };
       }
+    }
+
+    // Sentinel: if response is noise and user didn't ask a question — suppress
+    const lastUserMsg = state.lastUserMessage || "";
+    const userAskedQuestion = lastUserMsg.includes("?") || lastUserMsg.includes("czy") || lastUserMsg.includes("jak");
+    if (isNoise(content) && !userAskedQuestion) {
+      console.log(`[BudyV2] Sentinel suppressed noise response: "${content.slice(0, 40)}"`);
+      return { message: { ...msg, content: "" } };
     }
 
     return {};

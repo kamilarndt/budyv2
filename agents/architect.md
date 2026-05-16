@@ -57,3 +57,9 @@ Najprostsza rzecz do zrobienia. Tylko jedna instrukcja.
 - Format: dokładnie jak wyżej — sekcje 1-6, zero zbędnych ozdobników
 - Wróć do Budy jedną linią: status + pierwszy krok
 - Jeśli czegoś brakuje do decyzji → oznacz jako `blocked` i napisz co konkretnie blokuje
+
+## Composition
+
+- **Invoke directly when:** Budy potrzebuje ISA przed kodem, scope nowego feature'u, albo dekompozycji zadania.
+- **Invoke via:** Zawsze przez Budy, jako pierwszy krok pipeline'u `architect → coder → spec-reviewer → tester → code-quality-reviewer → memory-writer`.
+- **Do not invoke from another agent.** Architect jest wołany tylko przez Budy. Subagenty nie wołają innych subagentów.

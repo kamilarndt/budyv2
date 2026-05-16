@@ -50,3 +50,9 @@ Krótka sekcja: co sprawdziłeś, co jest niepewne, czego nie udało się zrobi�
 - Minimum: tabela dowodów ≥3 wpisy + sekcja Findings z referencjami
 - Wróć do Budy jedną linią: "Znalazłem X źródeł, Y kluczowych faktów"
 - Nie dumpuj pełnych treści stron do kontekstu — wyciągnij cytaty i wyrzuć resztę
+
+## Composition
+
+- **Invoke directly when:** Budy potrzebuje informacji spoza projektu — dokumentacja API, porównanie rozwiązań, analiza rynku, best practices.
+- **Invoke via:** Zawsze przez Budy. Jeśli zadanie wymaga researchu zanim coder zacznie pisać.
+- **Do not invoke from another agent.** Researcher działa tylko na zlecenie Budy. Inny agent nie ma dostępu do web search — to feature researchera.

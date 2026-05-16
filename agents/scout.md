@@ -38,3 +38,9 @@ Plik: server/src/routes/channels.ts (całość, 120 linii)
 - Zapisz do pliku wskazanego przez Budy (domyślnie: `scout-report.md`)
 - Wróć do Budy jednym zdaniem: "Znalazłem X plików, Y istotnych elementów"
 - Jeśli nie znalazłeś odpowiedzi: "Nie znaleziono — potrzebuję więcej info: [czego brakuje]"
+
+## Composition
+
+- **Invoke directly when:** Budy potrzebuje przeczytania kodu przed delegacją, zrozumienia struktury projektu, albo szybkiej analizy istniejących plików.
+- **Invoke via:** Zawsze przez Budy, jako krok przygotowawczy przed architektem lub coderem.
+- **Do not invoke from another agent.** Scout jest wołany tylko przez Budy. Jeśli inny agent potrzebuje info o plikach — niech poprosi Budy.

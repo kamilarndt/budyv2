@@ -24,20 +24,27 @@ Budy NIE robi niczego sam. Jego jedyna wartość to:
 | `scout` | Czyta pliki, analizuje strukturę | openrouter/free | deepseek-v4-flash |
 | `researcher` | Zbiera info z sieci/dokumentacji | openrouter/free | deepseek-v4-flash |
 | `coder` | Pisze kod produkcyjny | openrouter/free | deepseek-v4-flash |
+| `spec-reviewer` | Sprawdza zgodność kodu z ISA | openrouter/free | deepseek-v4-flash |
 | `tester` | Pisze testy | openrouter/free | deepseek-v4-flash |
-| `code-reviewer` | Review kodu | openrouter/free | deepseek-v4-flash |
+| `code-quality-reviewer` | Jakość: typy, edge case'y, wydajność, bezpieczeństwo | openrouter/free | deepseek-v4-flash |
+| `security-auditor` | Audyt bezpieczeństwa (OWASP, CVE) | openrouter/free | deepseek-v4-flash |
 | `worker` | Automatyzacja, deploy, skrypty | openrouter/free | deepseek-v4-flash |
-| `memory-writer` | Zapis wniosków do pamięci | openrouter/free | — |
+| `memory-writer` | Zapis wniosków do pamięci + LEARN phase | openrouter/free | — |
 
-## Workflow delegacji
+## Pipeline delegacji
 
 ```
 Zadanie → Budy analizuje → Budy decyduje o strategii
   ├── Proste (< 5 min) → 1 subagent, free model
-  ├── Średnie → 1 subagent, może strong model jeśli ryzykowne
-  ├── Złożone → architect (ISA) → coder (free/strong) → tester (free) → code-reviewer (free)
+  ├── Średnie → 1-2 subagenty, może strong jeśli ryzykowne
+  ├── Złożone (standard → E3):
+  │   architect (ISA) → coder → spec-reviewer → tester → code-quality-reviewer → memory-writer
+  ├── Złożone z bezpieczeństwem (E4/E5):
+  │   architect (ISA) → coder → spec-reviewer → tester → code-quality-reviewer → security-auditor → memory-writer
   └── Badawcze → researcher (free, wielu równolegle) → synteza przez Budy
 ```
+
+**Zasada continuous execution:** Nie przerywaj pipeline'u. Jeśli wszystko jasne — działaj. Przerywasz TYLKO gdy BLOCKED lub NEEDS_CONTEXT.
 
 ## Parallel spawn (swarm mode)
 
@@ -45,6 +52,17 @@ Zadanie → Budy analizuje → Budy decyduje o strategii
 - `agent.maxParallelSubagents` (settings.json) = limit równoległości
 - Każdy subagent dostaje **jeden, konkretny task** — nie "zrób wszystko", tylko "zrób to konkretne"
 - Taski tego samego typu nie mogą na siebie czekać (żaden dependency)
+
+## Subagent status signals
+
+Każdy subagent raportuje jeden z czterech statusów:
+
+| Status | Znaczenie | Co robi Budy |
+|--------|-----------|-------------|
+| **DONE** | Gotowe, wszystko OK | Kontynuuj pipeline |
+| **DONE_WITH_CONCERNS** | Gotowe, ale są wątpliwości | Przeczytaj concerns, oceń czy krytyczne, jeśli nie — kontynuuj |
+| **NEEDS_CONTEXT** | Brakuje info | Daj info, restartuj subagenta |
+| **BLOCKED** | Nie da się zrobić | Oceń: więcej kontekstu? mocniejszy model? mniejszy task? eskaluj do Kamila |
 
 ## Model routing
 
@@ -59,13 +77,14 @@ Budy przed każdą delegacją ocenia tier:
 - Task produkcyjny (deploy, bezpieczeństwo)
 - Task architektoniczny (architect zawsze strong)
 - Task który już raz failed na free modelu (retry z strong)
+- security-auditor dla E4/E5 pipeline'ów
 
 ## Output conventions
 
 - Subagenci piszą **do plików**, nie dumpują do kontekstu Budy
 - Budy czyta pliki gdy potrzebuje, nie trzyma wszystkiego w context window
 - Każdy subagent raportuje **jedną linię** po zakończeniu
-- Format raportu: `[nazwa] [status] [co zrobione]`
+- Format raportu: `[nazwa] STATUS: [DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED] — [co zrobione]`
 
 ## Error handling
 
