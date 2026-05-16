@@ -3,6 +3,7 @@ name: security-auditor
 description: Audyt bezpieczeństwa — OWASP, CVE, walidacja inputu, auth, sekrety, threat modeling.
 thinking: medium
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: read, search_files, grep, web_search

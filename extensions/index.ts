@@ -8,7 +8,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync } from "fs";
 
 import { SOUL_PATH, CRISIS_KEYWORDS, USER_TRIGGER_PATTERNS, SESSION_END_PHRASES } from "./modules/constants";
-import { mindRead } from "./modules/mind-read";
+import { mindRead, getEffortLevel } from "./modules/mind-read";
 import { sanitizeOutput, hasBlacklistedWords, isNoise } from "./modules/output-filter";
 import { callMemoryAPI, saveUserFact, saveDreamNote } from "./modules/memory-api";
 import { sendToHermes, pulseHeartbeat } from "./modules/bridge-hermes";
@@ -17,7 +17,6 @@ import { registerCommands } from "./modules/commands";
 import { TaskQueue } from "./modules/task-queue";
 import { routeModel, estimateTaskComplexity } from "./modules/model-router";
 import { renderDashboard, renderDashboardEmpty } from "./modules/task-dashboard";
-import { AutoEvalSystem } from "./modules/auto-eval";
 
 export default function (pi: ExtensionAPI) {
   // ════════════════════════════════════════════════════════════════════════════
@@ -39,7 +38,6 @@ export default function (pi: ExtensionAPI) {
       strategies: "",
     } as { frames: string; narratives: string; strategies: string },
     taskQueue: new TaskQueue(4),
-    autoEval: new AutoEvalSystem(),
   };
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -173,7 +171,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("turn_start", async (_event, ctx) => {
     try {
-      const entries = ctx.sessionManager.getEntries();
+      // Clean old completed tasks (prevent memory leak)
+      state.taskQueue.cleanOld(30 * 60 * 1000);
+      const entries = (ctx.sessionManager.getEntries?.() || []).slice(-15);
       const userMessages = entries
         .filter((e: any) => e.type === "message" && e.message?.role === "user")
         .map((e: any) => e.message.content?.toString() || "")
@@ -204,21 +204,6 @@ export default function (pi: ExtensionAPI) {
 
     // Update factory dashboard on every turn
     try {
-      const agents = ["architect", "scout", "researcher", "coder", "spec-reviewer", "tester", "code-quality-reviewer", "security-auditor", "worker", "memory-writer"];
-      const evalStats: string[] = [];
-      for (const agent of agents) {
-        const stats = state.autoEval.getAgentStats(agent);
-        if (stats && stats.evals > 0) {
-          const trendIcon = stats.trend === "up" ? "📈" : stats.trend === "down" ? "📉" : "➡️";
-          evalStats.push(`${agent.slice(0, 4)}:${stats.avgScore}${trendIcon}`);
-        }
-      }
-
-      const attention = state.autoEval.getAttentionList();
-      if (attention.length > 0) {
-        console.log(`[AutoEval] ⚠️ Attention: ${attention.map(a => `${a.agent}(${a.avgScore})`).join(", ")}`);
-      }
-
       renderDashboard(ctx, {
         taskQueue: state.taskQueue,
         totalTurns: () => state.turnCounter,
@@ -227,9 +212,7 @@ export default function (pi: ExtensionAPI) {
           const min = Math.floor(ms / 60000);
           return `${min}m`;
         },
-        extraLines: evalStats.length > 0
-          ? ["───", "📊 Eval: " + evalStats.join(" | ")]
-          : [],
+        extraLines: [],
       });
     } catch (err) {
       console.warn("[BudyV2] Dashboard render error:", err);
@@ -287,8 +270,8 @@ export default function (pi: ExtensionAPI) {
     block += `- Równoległość: niezależne taski tego samego typu startuj równolegle\n`;
     block += `- Szczegóły w AGENTS.md\n`;
 
-    // Auto-Eval instructions
-    block += `\n📊 AUTO-EVAL SYSTEM — FEEDBACK LOOP:\n`;
+    // Subagent pipeline rules
+    block += `\n📋 SUBAGENT PIPELINE:\n`;
     block += `- Security audit → subagent('security-auditor', { task: '...' })\n`;
     block += `- Continuous execution: nie pytaj Kamila między krokami. Działaj. Przerywaj tylko gdy BLOCKED.\n`;
     block += `- Pipeline: architect → coder → spec-reviewer → tester → code-quality-reviewer → memory-writer\n`;
@@ -339,7 +322,7 @@ export default function (pi: ExtensionAPI) {
       if (tp.pattern.test(event.text)) {
         const match = event.text.match(tp.pattern)?.[0] || "";
         const fact = `[${tp.tag}] Kamil użył "${match.trim()}" — interpretacja: "${tp.interpretation || tp.tag}". Kontekst: "${event.text.slice(0, 200)}"`;
-        saveUserFact(fact, tp.tag, 3);
+        saveUserFact(fact, tp.tag, 3).catch(err => console.warn('[BudyV2] saveUserFact failed:', err));
       }
     }
 
@@ -378,31 +361,73 @@ export default function (pi: ExtensionAPI) {
     const msg = event.message;
     if (!msg || !msg.content) return {};
 
-    let content: string;
-    if (typeof msg.content === "string") {
-      content = msg.content;
-    } else if (Array.isArray(msg.content)) {
-      content = msg.content.map((c: any) => c.text || c.content || "").join("\n");
-    } else if (msg.content && typeof msg.content === "object") {
-      content = JSON.stringify(msg.content);
-    } else {
+    // ── Array of typed content blocks (e.g. [{type, text}, ...]) ──────────
+    if (Array.isArray(msg.content)) {
+      const first = msg.content[0];
+      // Check if this is an array of typed content blocks (has 'type' field)
+      if (first && typeof first === "object" && "type" in first) {
+        const sanitizedBlocks = msg.content.map((block: any) => {
+          if (block.type === "text" && typeof block.text === "string") {
+            const sanitized = sanitizeOutput(block.text);
+            if (sanitized !== block.text) {
+              console.warn("[BudyV2] Output validation: blacklist detected in text block, sanitized");
+            }
+            return { ...block, text: sanitized };
+          }
+          // Leave code, thinking, tool_use, and other typed blocks untouched
+          return block;
+        });
+        return { message: { ...msg, content: sanitizedBlocks } };
+      }
+
+      // Fallback: plain array of strings or objects without 'type'
+      let content = msg.content.map((c: any) => c.text || c.content || "").join("\n");
+      if (hasBlacklistedWords(content)) {
+        const sanitized = sanitizeOutput(content);
+        if (sanitized !== content) {
+          console.warn("[BudyV2] Output validation: blacklist detected and sanitized");
+          return { message: { ...msg, content: sanitized } };
+        }
+      }
+      const lastUserMsg = state.lastUserMessage || "";
+      const userAskedQuestion = lastUserMsg.includes("?") || lastUserMsg.includes("czy") || lastUserMsg.includes("jak");
+      if (isNoise(content) && !userAskedQuestion) {
+        console.log(`[BudyV2] Sentinel suppressed noise response: "${content.slice(0, 40)}"`);
+        return { message: { ...msg, content: " " } };
+      }
       return {};
     }
 
-    if (hasBlacklistedWords(content)) {
-      const sanitized = sanitizeOutput(content);
-      if (sanitized !== content) {
-        console.warn("[BudyV2] Output validation: blacklist detected and sanitized");
-        return { message: { ...msg, content: sanitized } };
+    // ── Plain string content ─────────────────────────────────────────────
+    if (typeof msg.content === "string") {
+      let content = msg.content;
+      if (hasBlacklistedWords(content)) {
+        const sanitized = sanitizeOutput(content);
+        if (sanitized !== content) {
+          console.warn("[BudyV2] Output validation: blacklist detected and sanitized");
+          return { message: { ...msg, content: sanitized } };
+        }
       }
+      const lastUserMsg = state.lastUserMessage || "";
+      const userAskedQuestion = lastUserMsg.includes("?") || lastUserMsg.includes("czy") || lastUserMsg.includes("jak");
+      if (isNoise(content) && !userAskedQuestion) {
+        console.log(`[BudyV2] Sentinel suppressed noise response: "${content.slice(0, 40)}"`);
+        return { message: { ...msg, content: " " } };
+      }
+      return {};
     }
 
-    // Sentinel: if response is noise and user didn't ask a question — suppress
-    const lastUserMsg = state.lastUserMessage || "";
-    const userAskedQuestion = lastUserMsg.includes("?") || lastUserMsg.includes("czy") || lastUserMsg.includes("jak");
-    if (isNoise(content) && !userAskedQuestion) {
-      console.log(`[BudyV2] Sentinel suppressed noise response: "${content.slice(0, 40)}"`);
-      return { message: { ...msg, content: "" } };
+    // ── Object content (serialize to JSON, check blacklist) ──────────────
+    if (msg.content && typeof msg.content === "object") {
+      let content = JSON.stringify(msg.content);
+      if (hasBlacklistedWords(content)) {
+        const sanitized = sanitizeOutput(content);
+        if (sanitized !== content) {
+          console.warn("[BudyV2] Output validation: blacklist detected and sanitized");
+          return { message: { ...msg, content: sanitized } };
+        }
+      }
+      return {};
     }
 
     return {};
@@ -421,10 +446,8 @@ export default function (pi: ExtensionAPI) {
     // Block forbidden tools — Budy tylko deleguje
     if (FORBIDDEN_TOOLS.has(event.toolName)) {
       console.warn(`[BudyV2] BLOCKED: Budy próbował użyć ${event.toolName} — to narusza kontrakt`);
-      return {
-        abort: true,
-        error: `❌ Budy nie ma dostępu do narzędzia "${event.toolName}". Zgodnie z AGENTS.md, Budy jest tylko orkiestratorem. Użyj subagent() do delegacji tego zadania.`,
-      };
+      // Return success with empty result — LLM retries errors, accepts successes
+      return { result: "blocked: use subagent() instead" };
     }
 
     if (event.toolName === "subagent") {
@@ -441,8 +464,13 @@ export default function (pi: ExtensionAPI) {
         retryCount: 0,
         isProduction: goal.toLowerCase().includes("deploy") || goal.toLowerCase().includes("production"),
         filesToAnalyze: 0,
-        explicitRequest: "auto",
+        explicitRequest: getEffortLevel() >= 4 ? "strong" : "auto",
       });
+
+      // Set model on the subagent input so pi-subagents uses the routed model
+      if (input && routing.tier === "strong" && routing.model) {
+        (input as any).model = routing.model;
+      }
 
       const taskId = state.taskQueue.enqueue({
         agent: agentType,

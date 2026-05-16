@@ -30,7 +30,7 @@ export function renderDashboard(ctx: any, config: DashboardConfig): void {
   lines.push("───");
 
   // ═══ Agent status bar ═══
-  const agents = ["architect", "scout", "researcher", "coder", "tester", "reviewer", "worker", "mem-writer", "eval"];
+  const agents = ["architect", "scout", "researcher", "coder", "tester", "reviewer", "worker", "mem-writer"];
   const agentLabels: Record<string, string> = {
     architect: "🏗️ ARCH",
     scout: "🔍 SCOUT",
@@ -40,12 +40,10 @@ export function renderDashboard(ctx: any, config: DashboardConfig): void {
     reviewer: "👁️ REVW",
     worker: "⚡ WORK",
     "mem-writer": "🧠 MEM",
-    evaluator: "📊 EVAL",
-    eval: "📊 EVAL",
   };
 
   const agentStatuses = agents.map(agent => {
-    const count = snapshot.activeByAgent[agent] || 0;
+    const count = snapshot.latest.filter(t => t.status === "spawned" && t.agent === agent).length;
     const label = agentLabels[agent] || agent.toUpperCase();
     if (count > 0) return `${label}×${count}`;
     return `${label}·`; // idle
@@ -57,7 +55,7 @@ export function renderDashboard(ctx: any, config: DashboardConfig): void {
   lines.push("───");
 
   // ═══ Queue stats ═══
-  const totals = `📥 ${snapshot.pending} 📤 ${snapshot.active} ✅ ${snapshot.completed} ❌ ${snapshot.failed}`;
+  const totals = `🔱 ${snapshot.spawned} ✅ ${snapshot.completed} ❌ ${snapshot.failed}`;
   lines.push(totals);
 
   // ═══ Latest tasks ═══
@@ -65,10 +63,10 @@ export function renderDashboard(ctx: any, config: DashboardConfig): void {
     lines.push("───");
     const recent = snapshot.latest.slice(0, MAX_LATEST_DISPLAY);
     for (const task of recent) {
-      const statusIcon = task.status === "completed" ? "✅"
-        : task.status === "failed" ? "❌"
-        : task.status === "active" ? "🔄"
-        : "⏳";
+  const statusIcon = task.status === "completed" ? "✅"
+    : task.status === "failed" ? "❌"
+    : task.status === "spawned" ? "🔄"
+    : "⏳";
       const label = agentLabels[task.agent] || task.agent.toUpperCase();
       const goal = task.goal.length > 50 ? task.goal.slice(0, 47) + "..." : task.goal;
       lines.push(`${statusIcon} ${label} ${goal}`);
@@ -76,7 +74,7 @@ export function renderDashboard(ctx: any, config: DashboardConfig): void {
   }
 
   // ═══ Active agents detail ═══
-  const activeTasks = snapshot.latest.filter(t => t.status === "active");
+  const activeTasks = snapshot.latest.filter(t => t.status === "spawned");
   if (activeTasks.length > 0) {
     lines.push("───");
     for (const task of activeTasks) {

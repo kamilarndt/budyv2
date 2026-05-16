@@ -3,6 +3,7 @@ name: spec-reviewer
 description: Sprawdza zgodność kodu z ISA. Czy coder zrobił to co architect kazał? Zero checków jakościowych — tylko compliance.
 thinking: low
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: read, search_files, grep

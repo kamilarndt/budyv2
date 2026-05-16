@@ -3,6 +3,7 @@ name: code-quality-reviewer
 description: Code quality review — sprawdza poprawność, typy, edge case'y, czytelność, wydajność. Drugi stage review po spec-reviewer.
 thinking: medium
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: read, search_files, grep

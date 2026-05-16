@@ -58,10 +58,10 @@ export const USER_TRIGGER_PATTERNS = [
 ];
 
 export const SESSION_END_PHRASES = [
-  /\bkończymy\b/i, /\bna dziś\b/i, /\bto tyle\b/i,
-  /\bpapa\b/i, /\bdobranoc\b/i, /\bdo jutra\b/i,
-  /\bzamykam\b/i, /\bko[ńn]cz[ęe]\b/i,
-  /\bship it\b/i, /\bogar[ńn]i[ęe] to\b/i,
+  /^\s*kończymy\s*$/i, /^\s*na dziś\s*$/i, /^\s*to tyle\s*$/i,
+  /^\s*papa\s*$/i, /^\s*dobranoc\s*$/i, /^\s*do jutra\s*$/i,
+  /^\s*zamykam\s*$/i, /^\s*ko[ńn]cz[ęe]\s*$/i,
+  /^\s*ship it\s*$/i, /^\s*ogar[ńn]i[ęe] to\s*$/i,
 ];
 
 export const ENERGY_COMMENTS = [

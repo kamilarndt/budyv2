@@ -3,6 +3,7 @@ name: scout
 description: Skaut kodu — czyta pliki, analizuje strukturę projektu, wyciąga konkretne informacje.
 thinking: low
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: read, search_files, grep, ls

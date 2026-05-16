@@ -52,3 +52,6 @@ bin/fd
 # Old monolithic extensions (now modular)
 extensions/budy-personality-v2.ts
 extensions/memory.ts
+
+# Subagent-created backups
+extensions/archive/

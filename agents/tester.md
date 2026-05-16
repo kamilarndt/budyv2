@@ -3,6 +3,7 @@ name: tester
 description: Pisze testy — unit, integration, e2e. Sprawdza coverage i edge case'y.
 thinking: low
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: read, write, edit, search_files, grep, terminal

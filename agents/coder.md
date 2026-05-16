@@ -3,6 +3,7 @@ name: coder
 description: Pisze kod produkcyjny. TypeScript/React/Next.js/Express/Python. Odpowiada TYLKO kodem — zero wyjaśnień.
 thinking: low
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: write, edit, read, search_files, grep, ls, terminal

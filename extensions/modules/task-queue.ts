@@ -10,7 +10,7 @@ export interface Task {
   agent: string;             // coder | scout | researcher | ...
   goal: string;              // co ma zrobić
   context: string;           // pliki, ścieżki, kontekst
-  status: "pending" | "active" | "completed" | "failed" | "timeout";
+  status: "spawned" | "completed" | "failed" | "timeout";
   priority: number;          // 1 (niski) → 5 (krytyczny)
   tier: "free" | "strong";   // model tier
   createdAt: number;
@@ -18,8 +18,6 @@ export interface Task {
   completedAt: number | null;
   result: string | null;     // one-line report z subagenta
   error: string | null;
-  retryCount: number;
-  maxRetries: number;
   parentTaskId: string | null; // dla zależności
   type: "parallel" | "sequential" | "independent";
 }
@@ -30,41 +28,20 @@ export class TaskQueue {
 
   constructor(private maxParallelSubagents: number = 4) {}
 
-  enqueue(task: Omit<Task, "id" | "createdAt" | "status" | "retryCount" | "startedAt" | "completedAt" | "result" | "error">): string {
+  enqueue(task: Omit<Task, "id" | "createdAt" | "status" | "startedAt" | "completedAt" | "result" | "error">): string {
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.tasks.set(id, {
       ...task,
       id,
-      status: "pending",
+      status: "spawned",
       createdAt: Date.now(),
       startedAt: null,
       completedAt: null,
       result: null,
       error: null,
-      retryCount: 0,
     });
     console.log(`[TaskQueue] Enqueued ${id} → ${task.agent}: ${task.goal.slice(0, 60)}`);
     return id;
-  }
-
-  /** Kolejne zadanie do odpalenia (z uwzględnieniem max parallel per agent) */
-  dequeue(): Task | null {
-    const sorted = Array.from(this.tasks.values())
-      .filter(t => t.status === "pending")
-      .sort((a, b) => b.priority - a.priority);
-
-    for (const task of sorted) {
-      const currentActive = this.activeCounts.get(task.agent) || 0;
-      const maxPerAgent = Math.max(1, Math.floor(this.maxParallelSubagents / 2));
-
-      if (currentActive < maxPerAgent) {
-        task.status = "active";
-        task.startedAt = Date.now();
-        this.activeCounts.set(task.agent, currentActive + 1);
-        return task;
-      }
-    }
-    return null;
   }
 
   /** Oznacz jako zakończone */
@@ -82,16 +59,9 @@ export class TaskQueue {
   fail(id: string, error: string): void {
     const task = this.tasks.get(id);
     if (!task) return;
-    task.retryCount++;
+    task.status = "failed";
     task.error = error;
-
-    if (task.retryCount >= task.maxRetries) {
-      task.status = "failed";
-      console.log(`[TaskQueue] ${id} FAILED after ${task.retryCount} retries: ${error}`);
-    } else {
-      task.status = "pending"; // retry
-      console.log(`[TaskQueue] ${id} retry ${task.retryCount}/${task.maxRetries}`);
-    }
+    console.log(`[TaskQueue] ${id} FAILED: ${error}`);
     const count = this.activeCounts.get(task.agent) || 1;
     this.activeCounts.set(task.agent, Math.max(0, count - 1));
   }
@@ -110,25 +80,19 @@ export class TaskQueue {
 
   /** Ściągnij wszystkie taski dla podglądu dashboardu */
   snapshot(): {
-    pending: number;
-    active: number;
+    spawned: number;
     completed: number;
     failed: number;
-    activeByAgent: Record<string, number>;
+    timeout: number;
     latest: Task[];
   } {
     const all = Array.from(this.tasks.values());
-    const activeAgents: Record<string, number> = {};
-    this.activeCounts.forEach((count, agent) => {
-      activeAgents[agent] = count;
-    });
 
     return {
-      pending: all.filter(t => t.status === "pending").length,
-      active: all.filter(t => t.status === "active").length,
+      spawned: all.filter(t => t.status === "spawned").length,
       completed: all.filter(t => t.status === "completed").length,
       failed: all.filter(t => t.status === "failed").length,
-      activeByAgent: activeAgents,
+      timeout: all.filter(t => t.status === "timeout").length,
       latest: all.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
     };
   }
@@ -161,8 +125,8 @@ export class TaskQueue {
       t => t.status === "completed" && t.completedAt && (now - t.completedAt) < PIPELINE_WINDOW
     );
 
-    // Sprawdź czy code-reviewer (ostatni w pipeline) właśnie skończył
-    const hasRecentReviewer = completed.some(t => t.agent === "code-reviewer" || t.agent === "tester");
+    // Sprawdź czy code-quality-reviewer lub security-auditor (ostatnie w pipeline) właśnie skończyli
+    const hasRecentReviewer = completed.some(t => t.agent === "code-quality-reviewer" || t.agent === "security-auditor" || t.agent === "tester");
     if (!hasRecentReviewer) return null;
 
     // Zbierz wszystkie taski z ostatnich 60s dla kontekstu

@@ -3,6 +3,7 @@ name: worker
 description: Uniwersalny wykonawca — automatyzacja, deploy, skrypty, komendy terminalowe. Działa szybko i konkretnie.
 thinking: low
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: terminal, bash, write, read

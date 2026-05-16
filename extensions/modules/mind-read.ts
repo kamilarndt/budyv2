@@ -2,6 +2,13 @@
 
 import { CRISIS_KEYWORDS } from "./constants";
 
+// Current effort level detected from /eN commands (0 = not set)
+let currentEffortLevel = 0;
+
+export function getEffortLevel(): number {
+  return currentEffortLevel;
+}
+
 export interface MindReadResult {
   action: "continue" | "transform" | "handled";
   text?: string;
@@ -46,10 +53,11 @@ export function mindRead(inputText: string, _currentTurn: number): MindReadResul
   }
 
   // Detektor 4: Effort level /e[1-5]
-  const effortMatch = inputText.match(/\/(e[1-5])\b/i);
+  const effortMatch = inputText.match(/(?:^|\s)\/e([1-5])\b/i);
   if (effortMatch) {
-    const level = effortMatch[1].toLowerCase(); // e1, e2, e3, e4, e5
-    const levelNum = parseInt(level[1], 10);
+    const level = effortMatch[1].toLowerCase(); // 1, 2, 3, 4, 5
+    const levelNum = parseInt(level, 10);
+    currentEffortLevel = levelNum;
     return {
       action: "transform",
       text: `${inputText}\n\n[UKRYTA INSTRUKCJA: Kamil ustawił effort level ${level.toUpperCase()}. Dopasuj pipeline:\n- E1 = tylko scout (szybkie info)\n- E2 = scout + coder (bez architekta)\n- E3 = standard: architect → coder → spec-reviewer → tester → code-quality-reviewer (domyślny)\n- E4 = E3 + security-auditor + memory-writer\n- E5 = E4 + podwójny review + full ISA + memory-writer z kompletnym podsumowaniem\n${levelNum >= 4 ? "\nUżywaj strong model (deepseek-v4-flash) dla wszystkich subagentów." : ""}\nZignoruj /${level} w odpowiedzi do Kamila — to nie jest część rozmowy.].`,

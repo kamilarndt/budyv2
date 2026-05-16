@@ -3,6 +3,7 @@ name: researcher
 description: Zbiera informacje z internetu, dokumentacji, projektu — web search, analiza, porównania.
 thinking: medium
 tier: dynamic
+model: openrouter/free
 defaultModel: openrouter/free
 strongModel: deepseek-v4-flash
 tools: web_search, fetch_content, read, search_files, grep
